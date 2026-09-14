@@ -1,20 +1,53 @@
 #include "kernel/types.h"
 #include "kernel/stat.h"
+#include "kernel/param.h"
 #include "user/user.h"
 #include "kernel/fs.h"
+
+char *target;
+char **exec_argv;
+int exec_argc;
+int exec_mode;
 
 char*
 basename(char *path)
 {
   char *p;
-
   for(p = path + strlen(path); p >= path && *p != '/'; p--)
     ;
   return p + 1;
 }
 
 void
-finddir(char *dir, char *target)
+handle(char *path)
+{
+  if(!exec_mode){
+    printf("%s\n", path);
+    return;
+  }
+
+  char *argv[MAXARG];
+  int i;
+  for(i = 0; i < exec_argc; i++)
+    argv[i] = exec_argv[i];
+  argv[i++] = path;
+  argv[i] = 0;
+
+  int pid = fork();
+  if(pid < 0){
+    printf("find: fork failed\n");
+    return;
+  }
+  if(pid == 0){
+    exec(argv[0], argv);
+    printf("find: exec %s failed\n", argv[0]);
+    exit(1);
+  }
+  wait(0);
+}
+
+void
+finddir(char *dir)
 {
   char buf[512], *p;
   int fd, cfd;
@@ -44,13 +77,13 @@ finddir(char *dir, char *target)
     p[DIRSIZ] = 0;
 
     if(strcmp(de.name, target) == 0)
-      printf("%s\n", buf);
+      handle(buf);
 
     if((cfd = open(buf, 0)) < 0) continue;
     if(fstat(cfd, &st) < 0){ close(cfd); continue; }
     if(st.type == T_DIR){
       close(cfd);
-      finddir(buf, target);
+      finddir(buf);
     } else {
       close(cfd);
     }
@@ -65,9 +98,21 @@ main(int argc, char *argv[])
   int fd;
   struct stat st;
 
-  if(argc != 3){
-    printf("usage: find dir name\n");
+  if(argc < 3){
+    printf("usage: find dir name [-exec cmd args...]\n");
     exit(1);
+  }
+
+  target = argv[2];
+
+  if(argc > 3 && strcmp(argv[3], "-exec") == 0){
+    exec_mode = 1;
+    exec_argv = &argv[4];
+    exec_argc = argc - 4;
+    if(exec_argc < 1){
+      printf("find: -exec needs a command\n");
+      exit(1);
+    }
   }
 
   if((fd = open(argv[1], 0)) < 0){
@@ -82,11 +127,11 @@ main(int argc, char *argv[])
   close(fd);
 
   if(st.type != T_DIR){
-    if(strcmp(basename(argv[1]), argv[2]) == 0)
-      printf("%s\n", argv[1]);
+    if(strcmp(basename(argv[1]), target) == 0)
+      handle(argv[1]);
     exit(0);
   }
 
-  finddir(argv[1], argv[2]);
+  finddir(argv[1]);
   exit(0);
 }
