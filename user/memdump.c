@@ -60,6 +60,66 @@ main(int argc, char *argv[])
 void
 memdump(char *fmt, char *data, int len)
 {
-  // Your code here.  `data` holds `len` valid bytes.
+  int off = 0;
 
+  for(int i = 0; fmt[i] != 0; i++){
+    char c = fmt[i];
+
+    if(c == 'i'){
+      if(off + 4 > len){ printf("memdump: not enough data for 'i'\n"); return; }
+      int v;
+      memmove(&v, data + off, 4);
+      printf("%d\n", v);
+      off += 4;
+    } else if(c == 'h'){
+      if(off + 2 > len){ printf("memdump: not enough data for 'h'\n"); return; }
+      short v;
+      memmove(&v, data + off, 2);
+      printf("%d\n", v);
+      off += 2;
+    } else if(c == 'c'){
+      if(off + 1 > len){ printf("memdump: not enough data for 'c'\n"); return; }
+      printf("%c\n", data[off]);
+      off += 1;
+    } else if(c == 'p'){
+      if(off + 8 > len){ printf("memdump: not enough data for 'p'\n"); return; }
+      unsigned long long v = 0;
+      for(int k = 7; k >= 0; k--)
+        v = (v << 8) | (unsigned char)data[off + k];
+      char buf[17];
+      buf[16] = 0;
+      int pos = 16;
+      if(v == 0){
+        buf[--pos] = '0';
+      } else {
+        unsigned long long t = v;
+        while(t > 0){
+          int d = t & 0xf;
+          buf[--pos] = d < 10 ? '0' + d : 'a' + d - 10;
+          t >>= 4;
+        }
+      }
+      printf("%s\n", &buf[pos]);
+      off += 8;
+    } else if(c == 's'){
+      if(off + 8 > len){ printf("memdump: not enough data for 's'\n"); return; }
+      unsigned long long v = 0;
+      for(int k = 7; k >= 0; k--)
+        v = (v << 8) | (unsigned char)data[off + k];
+      printf("%s\n", (char*)v);
+      off += 8;
+    } else if(c == 'S'){
+      char *p = data + off;
+      int remaining = len - off;
+      for(int k = 0; k < remaining && p[k] != 0; k++)
+        printf("%c", p[k]);
+      printf("\n");
+      return;
+    } else {
+      printf("memdump: unknown format '");
+      printf("%c", c);
+      printf("'\n");
+      return;
+    }
+  }
 }
