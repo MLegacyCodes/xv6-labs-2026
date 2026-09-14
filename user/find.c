@@ -4,6 +4,45 @@
 #include "user/user.h"
 #include "kernel/fs.h"
 
+int matchhere(char *, char *);
+int matchstar(int, char *, char *);
+
+int
+match(char *re, char *text)
+{
+  if(re[0] == '^')
+    return matchhere(re+1, text);
+  do {
+    if(matchhere(re, text))
+      return 1;
+  } while(*text++ != '\0');
+  return 0;
+}
+
+int
+matchhere(char *re, char *text)
+{
+  if(re[0] == '\0')
+    return 1;
+  if(re[1] == '*')
+    return matchstar(re[0], re+2, text);
+  if(re[0] == '$' && re[1] == '\0')
+    return *text == '\0';
+  if(*text != '\0' && (re[0] == '.' || re[0] == *text))
+    return matchhere(re+1, text+1);
+  return 0;
+}
+
+int
+matchstar(int c, char *re, char *text)
+{
+  do {
+    if(matchhere(re, text))
+      return 1;
+  } while(*text != '\0' && (*text++ == c || c == '.'));
+  return 0;
+}
+
 char *target;
 char **exec_argv;
 int exec_argc;
@@ -76,7 +115,7 @@ finddir(char *dir)
     memmove(p, de.name, DIRSIZ);
     p[DIRSIZ] = 0;
 
-    if(strcmp(de.name, target) == 0)
+    if(match(target, de.name))
       handle(buf);
 
     if((cfd = open(buf, 0)) < 0) continue;
@@ -127,7 +166,7 @@ main(int argc, char *argv[])
   close(fd);
 
   if(st.type != T_DIR){
-    if(strcmp(basename(argv[1]), target) == 0)
+    if(match(target, basename(argv[1])))
       handle(argv[1]);
     exit(0);
   }
