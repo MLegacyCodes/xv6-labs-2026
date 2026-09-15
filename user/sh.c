@@ -1,9 +1,12 @@
 // Shell.
 
+// Shell.
+
 #include "kernel/types.h"
-#include "user/user.h"
-#include "kernel/fcntl.h"
 #include "kernel/stat.h"
+#include "kernel/fs.h"
+#include "kernel/fcntl.h"
+#include "user/user.h"
 
 // Parsed command representation
 #define EXEC  1
@@ -132,6 +135,89 @@ runcmd(struct cmd *cmd)
   exit(0);
 }
 
+static int
+wordstart(char *buf, int i)
+{
+  int j = i;
+  while(j > 0 && buf[j-1] != ' ' && buf[j-1] != '\t')
+    j--;
+  return j;
+}
+
+int
+complete(char *buf, int i, int max)
+{
+  int ws = wordstart(buf, i);
+  int wlen = i - ws;
+  if(wlen == 0)
+    return i;
+
+  int fd = open(".", O_RDONLY);
+  if(fd < 0)
+    return i;
+
+  struct dirent de;
+  char match[DIRSIZ+1];
+  int nmatch = 0;
+
+  while(read(fd, &de, sizeof(de)) == sizeof(de)){
+    if(de.inum == 0) continue;
+    if(strcmp(de.name, ".") == 0 || strcmp(de.name, "..") == 0) continue;
+
+    int k;
+    for(k = 0; k < wlen; k++){
+      if(de.name[k] != buf[ws + k])
+        break;
+    }
+    if(k != wlen)
+      continue;
+
+    if(nmatch == 0){
+      int m;
+      for(m = 0; m < DIRSIZ && de.name[m]; m++)
+        match[m] = de.name[m];
+      match[m] = 0;
+      nmatch = 1;
+    } else {
+      nmatch = 2;
+      break;
+    }
+  }
+  close(fd);
+
+  if(nmatch != 1)
+    return i;
+
+  int mlen = strlen(match);
+  for(int k = wlen; k < mlen && i + 1 < max; k++){
+    buf[i++] = match[k];
+    write(1, &match[k], 1);
+  }
+  return i;
+}
+
+char*
+sh_gets(char *buf, int max)
+{
+  int i, cc;
+  char c;
+
+  for(i = 0; i + 1 < max;){
+    cc = read(0, &c, 1);
+    if(cc < 1)
+      break;
+    if(c == '\t'){
+      i = complete(buf, i, max);
+      continue;
+    }
+    buf[i++] = c;
+    if(c == '\n' || c == '\r')
+      break;
+  }
+  buf[i] = 0;
+  return buf;
+}
+
 int
 getcmd(char *buf, int nbuf)
 {
@@ -139,7 +225,7 @@ getcmd(char *buf, int nbuf)
   if(fstat(0, &st) == 0 && st.type == T_DEVICE)
     write(2, "$ ", 2);
   memset(buf, 0, nbuf);
-  gets(buf, nbuf);
+  sh_gets(buf, nbuf);
   if (buf[0] == 0) // EOF
     return -1;
   return 0;
