@@ -17,6 +17,10 @@
 
 #define MAXARGS 10
 
+#define MAXHIST 20
+static char hist[MAXHIST][100];
+static int nhist = 0;
+
 struct cmd {
   int type;
 };
@@ -218,6 +222,41 @@ sh_gets(char *buf, int max)
   return buf;
 }
 
+void
+addhist(char *cmd)
+{
+  int n = strlen(cmd);
+  if(n > 0 && cmd[n-1] == '\n')
+    n--;
+  if(n == 0)
+    return;
+  if(n > 99)
+    n = 99;
+
+  if(nhist > 0){
+    char *prev = hist[nhist-1];
+    int pn = strlen(prev);
+    int same = (pn == n);
+    if(same)
+      for(int k = 0; k < n; k++)
+        if(prev[k] != cmd[k]){ same = 0; break; }
+    if(same)
+      return;
+  }
+
+  if(nhist == MAXHIST){
+    for(int i = 1; i < MAXHIST; i++)
+      for(int k = 0; k < 100; k++)
+        hist[i-1][k] = hist[i][k];
+    nhist--;
+  }
+
+  for(int k = 0; k < n; k++)
+    hist[nhist][k] = cmd[k];
+  hist[nhist][n] = 0;
+  nhist++;
+}
+
 int
 getcmd(char *buf, int nbuf)
 {
@@ -257,12 +296,47 @@ main(void)
         ;
       continue;
     }
+	    if (strcmp(cmd, "history\n") == 0 || strcmp(cmd, "history") == 0) {
+      for (int i = 0; i < nhist; i++)
+        printf("%d %s\n", i + 1, hist[i]);
+      continue;
+    }
+
+    if (cmd[0] == '!') {
+      int idx = -1;
+      if (cmd[1] == '!') {
+        if (nhist > 0) idx = nhist - 1;
+      } else {
+        int v = 0, k = 1;
+        while (cmd[k] >= '0' && cmd[k] <= '9') {
+          v = v * 10 + (cmd[k] - '0');
+          k++;
+        }
+        if (v >= 1 && v <= nhist) idx = v - 1;
+      }
+      if (idx < 0) {
+        printf("history: no such command\n");
+        continue;
+      }
+      char recall[100];
+      int rn = strlen(hist[idx]);
+      if (rn > 99) rn = 99;
+      for (int k = 0; k < rn; k++) recall[k] = hist[idx][k];
+      recall[rn] = 0;
+      printf("%s\n", recall);
+      if (fork1() == 0)
+        runcmd(parsecmd(recall));
+      wait(0);
+      continue;
+    }
+
     if (cmd[0] == 'c' && cmd[1] == 'd' && cmd[2] == ' ') {
       // Chdir must be called by the parent, not the child.
       cmd[strlen(cmd) - 1] = 0; // chop \n
       if (chdir(cmd + 3) < 0)
         fprintf(2, "cannot cd %s\n", cmd + 3);
     } else {
+	addhist(cmd);
       if (fork1() == 0)
         runcmd(parsecmd(cmd));
       wait(0);
