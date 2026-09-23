@@ -144,15 +144,27 @@ syscall(void)
   num = p->trapframe->a7;
 
   if(num > 0 && (p->mask & (1 << num)) != 0){
-    p->trapframe->a0 = -1;
-    return;
+    int allowed = 0;
+    if(num == SYS_open || num == SYS_exec){
+      char path[MAXPATH];
+      uint64 uarg;
+      argaddr(0, &uarg);
+      if(fetchstr(uarg, path, MAXPATH) >= 0){
+        if(strncmp(path, p->allowpath, MAXPATH) == 0)
+          allowed = 1;
+      }
+    }
+    if(!allowed){
+      p->trapframe->a0 = -1;
+      return;
+    }
   }
-  if (num > 0 && num < NELEM(syscalls) && syscalls[num]) {
-    // Use num to lookup the system call function for num, call it,
-    // and store its return value in p->trapframe->a0
+
+  if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     p->trapframe->a0 = syscalls[num]();
   } else {
-    printk("%d %s: unknown sys call %d\n", p->pid, p->name, num);
+    printk("%d %s: unknown sys call %d\n",
+            p->pid, p->name, num);
     p->trapframe->a0 = -1;
   }
 }
